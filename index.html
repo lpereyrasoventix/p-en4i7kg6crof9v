@@ -9,10 +9,13 @@
 <style>
 html, body { margin:0; height:100%; overflow:hidden; background:#000; font-family:Montserrat, Arial, sans-serif; }
 #ar { position:fixed; inset:0; }
-.tag { position:fixed; left:50%; top:max(16px, env(safe-area-inset-top)); transform:translateX(-50%); z-index:10;
-  background:rgba(250,250,245,.92); color:#1A6E64; border-radius:999px; padding:9px 18px; font-size:13px; font-weight:600;
-  white-space:nowrap; box-shadow:0 4px 14px rgba(0,0,0,.25); transition:opacity .4s; }
+.tag { position:fixed; left:50%; bottom:max(28px, env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:10;
+  background:rgba(250,250,245,.94); color:#1A6E64; border-radius:999px; padding:11px 20px; font-size:14px; font-weight:600;
+  white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.28); transition:opacity .5s, transform .5s; }
 .tag b { color:#E4972E; font-weight:800; }
+.tag.off { opacity:0; transform:translate(-50%, 12px); }
+.brand { position:fixed; top:max(16px, env(safe-area-inset-top)); left:0; right:0; text-align:center; z-index:10;
+  color:#fff; font-size:11px; letter-spacing:.35em; font-weight:600; text-shadow:0 1px 6px rgba(0,0,0,.6); }
 .err { display:none; position:fixed; inset:0; z-index:20; background:#FAFAF5; color:#1A6E64; text-align:center; padding:40px 28px; box-sizing:border-box; }
 .err h2 { font-weight:800; margin:60px 0 12px; }
 .err p { color:#6E6E68; line-height:1.5; }
@@ -27,6 +30,7 @@ html, body { margin:0; height:100%; overflow:hidden; background:#000; font-famil
 </head>
 <body>
 <div id="ar"></div>
+<div class="brand">INNOVATION DAY 2026 · I+D+i</div>
 <div class="tag" id="tag">Apunta la cámara a <b>tu tarjeta</b></div>
 <div class="err" id="err">
   <h2>Necesitamos la cámara</h2>
@@ -35,11 +39,11 @@ html, body { margin:0; height:100%; overflow:hidden; background:#000; font-famil
 
 <script type="module">
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MindARThree } from 'mindar-image-three';
+import { setupLighting, buildStage } from './stage.js';
 
 // Centro del QR respecto al centro de la tarjeta (ancho de la tarjeta = 1)
-const QR = { x: 0, y: 0.0185, size: 0.615 };
+const QR = { x: 0, y: 0.0185 };
 
 const mindar = new MindARThree({
   container: document.getElementById('ar'),
@@ -48,60 +52,26 @@ const mindar = new MindARThree({
   filterMinCF: 0.0001, filterBeta: 0.001,   // suaviza el temblor
 });
 const { renderer, scene, camera } = mindar;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8899aa, 1.6));
-const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-sun.position.set(0.5, 1, 2);
-scene.add(sun);
+setupLighting(renderer, scene);
 
 const anchor = mindar.addAnchor(0);
+const stage = buildStage(QR, 'herbie2.glb');
+anchor.group.add(stage.root);
 
-// Sombra suave sobre el QR
-const c = document.createElement('canvas'); c.width = c.height = 128;
-const g = c.getContext('2d');
-const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-grad.addColorStop(0, 'rgba(0,0,0,.45)'); grad.addColorStop(1, 'rgba(0,0,0,0)');
-g.fillStyle = grad; g.fillRect(0, 0, 128, 128);
-const shadow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
-  new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
-shadow.position.set(QR.x, QR.y, 0.002);
-anchor.group.add(shadow);
-
-// Herbie: pivote sobre el centro del QR, gira alrededor del eje perpendicular a la tarjeta
-const pivot = new THREE.Group();
-pivot.position.set(QR.x, QR.y, 0.15);
-anchor.group.add(pivot);
-const upright = new THREE.Group();
-upright.rotation.x = Math.PI / 2;      // el "arriba" del carro apunta hacia fuera de la tarjeta
-pivot.add(upright);
-
-new GLTFLoader().load('herbie.glb', (gltf) => {
-  const car = gltf.scene;
-  const root = car.getObjectByName('Herbie');
-  if (root) root.position.set(0, 0, 0);
-  car.scale.setScalar(1.15);
-  car.position.y = -0.03;
-  upright.add(car);
-});
-
-anchor.onTargetFound = () => { document.getElementById('tag').style.opacity = 0; };
-anchor.onTargetLost = () => { document.getElementById('tag').style.opacity = 1; };
+const tag = document.getElementById('tag');
+anchor.onTargetFound = () => { stage.show(); tag.classList.add('off'); };
+anchor.onTargetLost = () => { stage.hide(); tag.classList.remove('off'); };
 
 const clock = new THREE.Clock();
 try {
   await mindar.start();
   renderer.setAnimationLoop(() => {
-    const t = clock.getElapsedTime();
-    pivot.rotation.z = t * 0.55;                       // una vuelta cada ~11 s
-    pivot.position.z = 0.15 + 0.03 * Math.sin(t * 1.6); // flota
-    const s = 0.62 - 0.12 * Math.sin(t * 1.6);
-    shadow.scale.set(s, s * 0.8, 1);
+    stage.update(clock.getElapsedTime());
     renderer.render(scene, camera);
   });
 } catch (e) {
   document.getElementById('err').style.display = 'block';
-  document.getElementById('tag').style.display = 'none';
+  tag.style.display = 'none';
 }
 </script>
 </body>
