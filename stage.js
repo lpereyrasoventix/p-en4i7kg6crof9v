@@ -81,8 +81,9 @@ export function buildStage(qr, modelUrl) {
   new GLTFLoader().load(modelUrl, (gltf) => {
     const car = gltf.scene;
     car.scale.setScalar(1.15);
-    car.position.y = -0.04 * 1.15;     // centra el carro en el pivote
-    car.traverse(o => { if (o.isMesh) o.material.envMapIntensity = 1.1; });
+    const box = new THREE.Box3().setFromObject(car);
+    car.position.y = -box.min.y - 0.02;  // las ruedas quedan justo sobre el pivote
+    car.traverse(o => { if (o.isMesh) [].concat(o.material).forEach(m => { m.envMapIntensity = 1.1; }); });
     upright.add(car);
   });
 
